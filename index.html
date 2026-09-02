@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MATRIX_DEFENDER // rv2hex</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body, html { width: 100%; height: 100%; overflow: hidden; background: #020b04; font-family: 'Courier New', monospace; color: #00ff66; }
+#gameCanvas { display: block; background: #000; }
+#ui {
+position: absolute; top: 15px; left: 20px; right: 20px;
+display: flex; justify-content: space-between; align-items: center;
+font-size: 18px; font-weight: bold; text-shadow: 0 0 8px #00ff66;
+pointer-events: none;
+}
+.scanline {
+	position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+	background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+	background-size: 100% 4px; pointer-events: none;
+}
+</style>
+</head>
+<body>
+<div id="ui">
+<div id="score">SCORE: 000000</div>
+<div id="status">STATUS: ONLINE</div>
+<div id="hp">SYSTEM_INTEGRITY: 100%</div>
+</div>
+<div class="scanline"></div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+	canvas.width = window.innerWidth;
+	canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Matrix Rain Setup
+const chars = '01ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*';
+const fontSize = 14;
+const columns = Math.floor(canvas.width / fontSize);
+const drops = Array(columns).fill(1);
+
+function drawMatrixRain() {
+	ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+	ctx.fillStyle = '#003b15';
+	ctx.font = fontSize + 'px monospace';
+	
+	for (let i = 0; i < drops.length; i++) {
+		const text = chars.charAt(Math.floor(Math.random() * chars.length));
+		ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+		if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+			drops[i] = 0;
+		}
+		drops[i]++;
+	}
+}
+
+// Controls
+const keys = {};
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+// Game Entities
+let score = 0;
+let health = 100;
+let gameOver = false;
+
+const player = {
+	x: canvas.width / 2,
+	y: canvas.height - 80,
+	width: 40,
+	height: 40,
+	speed: 7,
+	cooldown: 0
+};
+
+const bullets = [];
+const enemies = [];
+const particles = [];
+
+function spawnEnemy() {
+	const types = ['VIRUS', 'CORRUPT', '0xERR', 'MALWARE', 'BUG'];
+	enemies.push({
+		x: Math.random() * (canvas.width - 60) + 30,
+				 y: -30,
+				 speed: Math.random() * 2 + 2,
+				 label: types[Math.floor(Math.random() * types.length)],
+				 hp: 2
+	});
+}
+
+function createExplosion(x, y, color) {
+	for (let i = 0; i < 15; i++) {
+		particles.push({
+			x, y,
+			dx: (Math.random() - 0.5) * 6,
+					   dy: (Math.random() - 0.5) * 6,
+					   size: Math.random() * 4 + 1,
+					   color: color || '#00ff66',
+					   life: 30
+		});
+	}
+}
+
+let spawnTimer = 0;
+
+function gameLoop() {
+	drawMatrixRain();
+	
+	if (!gameOver) {
+		// Player Controls
+		if ((keys['ArrowLeft'] || keys['KeyA']) && player.x > 30) player.x -= player.speed;
+		if ((keys['ArrowRight'] || keys['KeyD']) && player.x < canvas.width - 30) player.x += player.speed;
+		
+		// Auto/Manual Shooting
+		if ((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && player.cooldown <= 0) {
+			bullets.push({ x: player.x, y: player.y - 20, speed: 12 });
+			player.cooldown = 10;
+		}
+		if (player.cooldown > 0) player.cooldown--;
+		
+		// Draw Player Ship
+		ctx.strokeStyle = '#00ff66';
+		ctx.fillStyle = '#00ff66';
+		ctx.shadowBlur = 15;
+		ctx.shadowColor = '#00ff66';
+		ctx.beginPath();
+		ctx.moveTo(player.x, player.y - 20);
+		ctx.lineTo(player.x - 20, player.y + 15);
+		ctx.lineTo(player.x, player.y + 5);
+		ctx.lineTo(player.x + 20, player.y + 15);
+		ctx.closePath();
+		ctx.stroke();
+		
+		// Spawn Enemies
+		spawnTimer++;
+		if (spawnTimer > 40) {
+			spawnEnemy();
+			spawnTimer = 0;
+		}
+		
+		// Update Bullets
+		for (let i = bullets.length - 1; i >= 0; i--) {
+			const b = bullets[i];
+			b.y -= b.speed;
+			ctx.fillStyle = '#00ff66';
+			ctx.fillRect(b.x - 2, b.y, 4, 12);
+			
+			if (b.y < 0) bullets.splice(i, 1);
+		}
+		
+		// Update Enemies
+		for (let i = enemies.length - 1; i >= 0; i--) {
+			const e = enemies[i];
+			e.y += e.speed;
+			
+			ctx.fillStyle = '#ff3366';
+			ctx.shadowColor = '#ff3366';
+			ctx.font = '14px monospace';
+			ctx.fillText(`[${e.label}]`, e.x - 25, e.y);
+			
+			// Collision with bullets
+			for (let j = bullets.length - 1; j >= 0; j--) {
+				const b = bullets[j];
+				if (Math.abs(b.x - e.x) < 30 && Math.abs(b.y - e.y) < 15) {
+					e.hp--;
+					bullets.splice(j, 1);
+					if (e.hp <= 0) {
+						createExplosion(e.x, e.y, '#ff3366');
+						enemies.splice(i, 1);
+						score += 100;
+						document.getElementById('score').innerText = `SCORE: ${String(score).padStart(6, '0')}`;
+						break;
+					}
+				}
+			}
+			
+			// Collision with bottom/player
+			if (e.y > canvas.height - 40) {
+				health -= 15;
+				createExplosion(e.x, e.y, '#ff0000');
+				enemies.splice(i, 1);
+				document.getElementById('hp').innerText = `SYSTEM_INTEGRITY: ${Math.max(0, health)}%`;
+				if (health <= 0) {
+					gameOver = true;
+				}
+			}
+		}
+		
+		// Update Particles
+		for (let i = particles.length - 1; i >= 0; i--) {
+			const p = particles[i];
+			p.x += p.dx;
+			p.y += p.dy;
+			p.life--;
+			ctx.fillStyle = p.color;
+			ctx.fillRect(p.x, p.y, p.size, p.size);
+			if (p.life <= 0) particles.splice(i, 1);
+		}
+		
+	} else {
+		// Game Over Overlay
+		ctx.fillStyle = '#ff0055';
+		ctx.shadowColor = '#ff0055';
+		ctx.font = '30px monospace';
+		ctx.textAlign = 'center';
+		ctx.fillText('CRITICAL_SYSTEM_FAILURE', canvas.width / 2, canvas.height / 2 - 20);
+		ctx.fillStyle = '#00ff66';
+		ctx.shadowColor = '#00ff66';
+		ctx.font = '18px monospace';
+		ctx.fillText('PRESS [SPACE] TO REBOOT SYSTEM', canvas.width / 2, canvas.height / 2 + 30);
+		
+		if (keys['Space']) {
+			health = 100;
+			score = 0;
+			enemies.length = 0;
+			bullets.length = 0;
+			gameOver = false;
+			document.getElementById('score').innerText = 'SCORE: 000000';
+			document.getElementById('hp').innerText = 'SYSTEM_INTEGRITY: 100%';
+		}
+	}
+	
+	ctx.shadowBlur = 0; // Reset canvas shadows
+	requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
