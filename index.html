@@ -24,6 +24,7 @@ pointer-events: none;
 <body>
 <div id="ui">
 <div id="score">SCORE: 000000</div>
+<div id="hi">HI: 000000</div>
 <div id="status">STATUS: ONLINE</div>
 <div id="hp">SYSTEM_INTEGRITY: 100%</div>
 </div>
@@ -72,6 +73,9 @@ window.addEventListener('keyup', e => keys[e.code] = false);
 let score = 0;
 let health = 100;
 let gameOver = false;
+let elapsed = 0; // frames survived: drives the difficulty ramp
+let newRecord = false;
+let best = parseInt(localStorage.getItem('matrix_highscore') || '0', 10) || 0;
 
 const player = {
 	x: canvas.width / 2,
@@ -86,14 +90,21 @@ const bullets = [];
 const enemies = [];
 const particles = [];
 
+// Difficulty ramp: a wave every ~20s. Spawn interval shrinks 90 -> 22
+// frames, speed grows 1.2 -> 4.2, enemy hp 1 -> 2 (wave 2+) -> 3 (wave 5+).
+function wave() { return Math.floor(elapsed / 1200) + 1; }
+
+function spawnInterval() { return Math.max(22, 90 - wave() * 7); }
+
 function spawnEnemy() {
+	const w = wave();
 	const types = ['VIRUS', 'CORRUPT', '0xERR', 'MALWARE', 'BUG'];
 	enemies.push({
 		x: Math.random() * (canvas.width - 60) + 30,
 				 y: -30,
-				 speed: Math.random() * 2 + 2,
+				 speed: Math.min(4.2, 1.2 + w * 0.3) + Math.random() * 1.2,
 				 label: types[Math.floor(Math.random() * types.length)],
-				 hp: 2
+				 hp: w >= 5 ? 3 : w >= 2 ? 2 : 1
 	});
 }
 
@@ -116,6 +127,8 @@ function gameLoop() {
 	drawMatrixRain();
 	
 	if (!gameOver) {
+		elapsed++;
+		document.getElementById('status').innerText = `STATUS: ONLINE — WAVE ${wave()}`;
 		// Player Controls
 		if ((keys['ArrowLeft'] || keys['KeyA']) && player.x > 30) player.x -= player.speed;
 		if ((keys['ArrowRight'] || keys['KeyD']) && player.x < canvas.width - 30) player.x += player.speed;
@@ -142,7 +155,7 @@ function gameLoop() {
 		
 		// Spawn Enemies
 		spawnTimer++;
-		if (spawnTimer > 40) {
+		if (spawnTimer > spawnInterval()) {
 			spawnEnemy();
 			spawnTimer = 0;
 		}
@@ -178,6 +191,11 @@ function gameLoop() {
 						enemies.splice(i, 1);
 						score += 100;
 						document.getElementById('score').innerText = `SCORE: ${String(score).padStart(6, '0')}`;
+						if (score > best) {
+							best = score;
+							newRecord = true;
+							document.getElementById('hi').innerText = `HI: ${String(best).padStart(6, '0')}`;
+						}
 						break;
 					}
 				}
@@ -191,6 +209,7 @@ function gameLoop() {
 				document.getElementById('hp').innerText = `SYSTEM_INTEGRITY: ${Math.max(0, health)}%`;
 				if (health <= 0) {
 					gameOver = true;
+					localStorage.setItem('matrix_highscore', String(best));
 				}
 			}
 		}
@@ -217,14 +236,26 @@ function gameLoop() {
 		ctx.shadowColor = '#00ff66';
 		ctx.font = '18px monospace';
 		ctx.fillText('PRESS [SPACE] TO REBOOT SYSTEM', canvas.width / 2, canvas.height / 2 + 30);
+		ctx.fillStyle = '#00ff66';
+		ctx.shadowColor = '#00ff66';
+		ctx.font = '16px monospace';
+		ctx.fillText(`SCORE ${String(score).padStart(6, '0')} — BEST ${String(best).padStart(6, '0')}`, canvas.width / 2, canvas.height / 2 + 58);
+		if (newRecord && score > 0) {
+			ctx.fillStyle = '#FFFF00';
+			ctx.shadowColor = '#FFFF00';
+			ctx.fillText('** NEW RECORD **', canvas.width / 2, canvas.height / 2 + 84);
+		}
 		
 		if (keys['Space']) {
 			health = 100;
 			score = 0;
+			elapsed = 0;
+			newRecord = false;
 			enemies.length = 0;
 			bullets.length = 0;
 			gameOver = false;
 			document.getElementById('score').innerText = 'SCORE: 000000';
+			document.getElementById('status').innerText = 'STATUS: ONLINE';
 			document.getElementById('hp').innerText = 'SYSTEM_INTEGRITY: 100%';
 		}
 	}
@@ -233,6 +264,7 @@ function gameLoop() {
 	requestAnimationFrame(gameLoop);
 }
 
+document.getElementById('hi').innerText = `HI: ${String(best).padStart(6, '0')}`;
 gameLoop();
 </script>
 </body>
